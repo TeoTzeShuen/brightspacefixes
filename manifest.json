@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Brightspace Fixes",
+  "version": "0.1.0",
+  "description": "Quality-of-life fixes for SIT xSITE (D2L Brightspace): dark mode and a course progress/grades panel.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "brightspacefixes@teotz.local",
+      "strict_min_version": "128.0"
+    }
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://xsite.singaporetech.edu.sg/*"],
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Brightspace Fixes",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    },
+    "default_area": "navbar",
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://xsite.singaporetech.edu.sg/*"],
+      "js": ["src/compat.js", "src/darkmode.js"],
+      "css": ["src/darkmode.css"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://xsite.singaporetech.edu.sg/d2l/home", "https://xsite.singaporetech.edu.sg/d2l/home?*"],
+      "js": ["src/compat.js", "src/api.js", "src/panel.js"],
+      "css": ["src/panel.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

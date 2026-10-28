@@ -1,0 +1,21 @@
+/*
+ * Brightspace renders much of its UI inside web components with shadow roots,
+ * which page stylesheets can't reach. Inverting the whole top-level document
+ * reaches everything (including iframes), then media is inverted back so
+ * photos and videos look normal.
+ */
+html.bsf-dark {
+  filter: invert(0.92) hue-rotate(180deg);
+  background: #fff;
+}
+
+html.bsf-dark img,
+html.bsf-dark video,
+html.bsf-dark picture,
+html.bsf-dark canvas,
+html.bsf-dark iframe[src*="youtube"],
+html.bsf-dark iframe[src*="vimeo"],
+html.bsf-dark iframe[src*="panopto"],
+html.bsf-dark .bsf-no-invert {
+  filter: invert(1) hue-rotate(180deg);
+}
