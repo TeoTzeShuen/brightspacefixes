@@ -123,7 +123,37 @@
 
   const STATUS_LABEL = { done: "Submitted", overdue: "Not submitted", past: "Closed", upcoming: "" };
 
-  function deadlineRow(d) {
+  const HIDE_TIP = "Hide from calendar (click twice)";
+  const CONFIRM_TIP = "Click again to hide this from the calendar. It stays on Brightspace; restore it below the list.";
+
+  // Two-click hide without a dialog: the first click arms the button ("−?"),
+  // the second hides. It disarms itself if the pointer or focus moves away.
+  function hideButton(onHide) {
+    const btn = el("button", { type: "button", className: "bsf-hide", textContent: "−", title: HIDE_TIP });
+    btn.setAttribute("aria-label", HIDE_TIP);
+    const disarm = () => {
+      btn.classList.remove("bsf-armed");
+      btn.textContent = "−";
+      btn.title = HIDE_TIP;
+      btn.setAttribute("aria-label", HIDE_TIP);
+    };
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (!btn.classList.contains("bsf-armed")) {
+        btn.classList.add("bsf-armed");
+        btn.textContent = "−?";
+        btn.title = CONFIRM_TIP;
+        btn.setAttribute("aria-label", CONFIRM_TIP);
+        return;
+      }
+      onHide();
+    });
+    btn.addEventListener("mouseleave", disarm);
+    btn.addEventListener("blur", disarm);
+    return btn;
+  }
+
+  function deadlineRow(d, onHide) {
     const s = status(d);
     return el(
       "li",
@@ -131,29 +161,41 @@
       el("span", { className: "bsf-dot" }),
       el(
         "div",
-        {},
+        { className: "bsf-deadline-text" },
         el("a", { href: d.url, textContent: d.name }),
         el("div", {
           className: "bsf-muted",
           textContent: [d.course, `due ${shortDate(d.due)}`, STATUS_LABEL[s]].filter(Boolean).join(" · "),
         })
-      )
+      ),
+      hideButton(onHide)
     );
   }
 
+  const HIDDEN_KEY = "hiddenDeadlines";
   let monthOffset = 0;
   let selectedDay = null;
 
-  function calendar(deadlines) {
+  // `hidden` is a Set of deadline URLs (unique per dropbox folder / quiz) the user dismissed.
+  function calendar(deadlines, hidden) {
     const wrap = el("section", { className: "bsf-cal" });
-    const dated = deadlines.filter((d) => d.due);
-    const byDay = new Map();
-    for (const d of dated) {
-      const k = dayKey(d.due);
-      byDay.set(k, [...(byDay.get(k) ?? []), d]);
-    }
+    const saveHidden = () => ext.storage.local.set({ [HIDDEN_KEY]: [...hidden] });
 
     const draw = () => {
+      const dated = deadlines.filter((d) => d.due && !hidden.has(d.url));
+      const hiddenCount = deadlines.filter((d) => hidden.has(d.url)).length;
+      const byDay = new Map();
+      for (const d of dated) {
+        const k = dayKey(d.due);
+        byDay.set(k, [...(byDay.get(k) ?? []), d]);
+      }
+      const hide = (d) => () => {
+        hidden.add(d.url);
+        saveHidden();
+        if (selectedDay && !byDay.get(selectedDay)?.some((x) => x !== d)) selectedDay = null;
+        draw();
+      };
+
       const today = new Date();
       const first = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
       const nav = (delta, label) => {
@@ -230,10 +272,26 @@
           { className: "bsf-cal-side" },
           el("h3", { className: "bsf-cal-listhead", textContent: heading }),
           list.length
-            ? el("ul", { className: "bsf-deadlines" }, ...list.map(deadlineRow))
-            : el("div", { className: "bsf-muted", textContent: "Nothing due." })
+            ? el("ul", { className: "bsf-deadlines" }, ...list.map((d) => deadlineRow(d, hide(d))))
+            : el("div", { className: "bsf-muted", textContent: "Nothing due." }),
+          hiddenCount ? restoreButton(hiddenCount) : null
         )
       );
+    };
+
+    const restoreButton = (count) => {
+      const btn = el("button", {
+        type: "button",
+        className: "bsf-restore",
+        textContent: `${count} hidden · Restore`,
+        title: "Show all hidden deadlines on the calendar again",
+      });
+      btn.addEventListener("click", () => {
+        hidden.clear();
+        saveHidden();
+        draw();
+      });
+      return btn;
     };
     draw();
     return wrap;
@@ -292,7 +350,8 @@
         ...list,
         el("div", { className: "bsf-footnote", textContent: `Updated ${new Date(data.at).toLocaleTimeString()}` })
       );
-      deadlines.body.replaceChildren(calendar(data.courses.flatMap((c) => c.deadlines ?? [])));
+      const { [HIDDEN_KEY]: hidden = [] } = await ext.storage.local.get(HIDDEN_KEY);
+      deadlines.body.replaceChildren(calendar(data.courses.flatMap((c) => c.deadlines ?? []), new Set(hidden)));
     } catch (err) {
       const msg = () => el("div", { className: "bsf-error", textContent: `Couldn't load: ${err.message}` });
       progress.body.replaceChildren(msg());

@@ -241,6 +241,54 @@ button.bsf-cal-day:hover {
   color: var(--bsf-accent);
   text-decoration: underline;
 }
+.bsf-deadline-text {
+  flex: 1;
+  min-width: 0;
+}
+.bsf-hide {
+  flex: none;
+  align-self: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: none;
+  color: var(--bsf-muted);
+  font: 700 14px/1 "Lato", system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+/* Faint until the row is hovered or focused, so the list stays calm; full strength once armed. */
+.bsf-deadline:hover .bsf-hide,
+.bsf-hide:focus-visible,
+.bsf-hide.bsf-armed {
+  opacity: 1;
+}
+.bsf-hide:hover {
+  border-color: var(--bsf-border);
+  color: var(--bsf-fg);
+}
+.bsf-hide.bsf-armed {
+  border-color: var(--bsf-overdue);
+  color: var(--bsf-overdue);
+  font-size: 12px;
+}
+.bsf-restore {
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--bsf-muted);
+  font: 12px "Lato", system-ui, sans-serif;
+  cursor: pointer;
+}
+.bsf-restore:hover {
+  color: var(--bsf-accent);
+  text-decoration: underline;
+}
+
 .bsf-overdue .bsf-muted {
   color: var(--bsf-overdue);
 }
