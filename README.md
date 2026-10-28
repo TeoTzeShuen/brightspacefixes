@@ -9,9 +9,10 @@ Quality-of-life fixes for SIT's xSITE (D2L Brightspace). Firefox first, and also
   - content completion (from `content/myItems`)
   - assignments submitted (from `dropbox/folders/*/submissions/mysubmissions`)
   - next due item
+  - a **deadlines calendar** covering Dropbox folders and dated quizzes across current courses. Today is highlighted, and each due day has a dot: blue = upcoming, green = submitted, red = past due and not submitted, grey = closed quiz. Click a day to list its items, and use ‹ › to change month. Below the calendar is an "Upcoming" list.
   - released grade items and the final grade once it's released
   
-  It docks in the right-hand gutter when there's room. Otherwise it becomes a slide-out drawer opened from a tab on the right edge. Data is cached for 15 minutes; ↻ refreshes it.
+  It appears as two native-looking homepage widgets: **Course Progress** at the top of the right column, and **Deadlines** (the calendar) above My Courses. Data is cached for 15 minutes; ↻ refreshes it.
 
 ## Install (Firefox)
 

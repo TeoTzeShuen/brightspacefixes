@@ -1,5 +1,6 @@
 (async () => {
-  const CACHE_KEY = "panelCache";
+  // Bump the suffix whenever the cached data shape changes.
+  const CACHE_KEY = "panelCache.v2";
   const CACHE_TTL = 15 * 60 * 1000;
   // Enrollments carry no term info, but SIT course names end in a tag like "[2026/27 T1]",
   // which sorts chronologically as a string.
@@ -33,12 +34,15 @@
     const courses = currentCourses(await API.myCourses());
     const data = await Promise.all(
       courses.map(async (c) => {
-        const [content, grades, assignments] = await Promise.all([
+        const [content, grades, assignments, quizzes] = await Promise.all([
           API.contentProgress(c.id).catch(() => null),
           API.grades(c.id).catch(() => null),
-          API.assignments(c.id).catch(() => null),
+          API.assignments(c.id).catch(() => []),
+          API.quizzes(c.id).catch(() => []),
         ]);
-        return { ...c, content, grades, assignments };
+        const short = (c.code ?? "").split("-").at(-1) || c.name.split("-")[0];
+        const deadlines = [...assignments, ...quizzes].map((d) => ({ ...d, course: short }));
+        return { ...c, short, content, grades, deadlines };
       })
     );
     const fresh = { at: Date.now(), courses: data };
@@ -72,18 +76,25 @@
     );
 
     const body = el("div", { className: "bsf-course-body" });
-    if (c.assignments?.total)
+    const dropboxes = c.deadlines.filter((d) => d.kind === "Dropbox");
+    if (dropboxes.length)
       body.append(
-        el("div", { className: "bsf-row", textContent: `Assignments submitted: ${c.assignments.submitted}/${c.assignments.total}` })
+        el("div", {
+          className: "bsf-row",
+          textContent: `Assignments submitted: ${dropboxes.filter((d) => d.done).length}/${dropboxes.length}`,
+        })
       );
-    if (c.content?.nextDue)
+    const next = c.deadlines
+      .filter((d) => !d.done && d.due && Date.parse(d.due) > Date.now())
+      .sort((a, b) => Date.parse(a.due) - Date.parse(b.due))[0];
+    if (next)
       body.append(
         el(
           "div",
           { className: "bsf-row" },
           "Next due: ",
-          el("a", { href: c.content.nextDue.url, textContent: c.content.nextDue.name }),
-          ` (${shortDate(c.content.nextDue.due)})`
+          el("a", { href: next.url, textContent: next.name }),
+          ` (${shortDate(next.due)})`
         )
       );
 
@@ -101,72 +112,203 @@
     return card;
   }
 
-  function mount() {
-    const panel = el("aside", { className: "bsf-panel", id: "bsf-panel" });
-    const toggle = el("button", { className: "bsf-tab", textContent: "Progress", type: "button" });
-    toggle.addEventListener("click", () => panel.classList.toggle("bsf-open"));
-    document.body.append(panel, toggle);
+  // Local YYYY-MM-DD, so a 23:59 SGT deadline lands on the right day.
+  const dayKey = (d) => new Date(d).toLocaleDateString("en-CA");
 
-    // Sit in the empty gutter to the right of the homepage layout when it's wide
-    // enough; otherwise collapse into a slide-out drawer behind the tab.
-    const place = () => {
-      const layout = document.querySelector(".homepage-col-12") ?? document.querySelector(".homepage-col-4");
-      const header = document.querySelector("d2l-navigation, .d2l-navigation-s");
-      const right = layout?.getBoundingClientRect().right ?? innerWidth;
-      const gutter = innerWidth - right;
-      const top = Math.max(16, (header?.getBoundingClientRect().bottom ?? 0) + 16);
-      const docked = gutter >= 280;
-      panel.classList.toggle("bsf-docked", docked);
-      toggle.hidden = docked;
-      panel.style.top = `${top}px`;
-      panel.style.left = docked ? `${right + 16}px` : "";
-      panel.style.width = docked ? `${Math.min(360, gutter - 32)}px` : "";
-    };
-    place();
-    addEventListener("resize", place);
-    // Header loads lazily; re-place once it settles.
-    setTimeout(place, 1500);
-    return panel;
+  function status(d) {
+    if (d.done) return "done";
+    if (Date.parse(d.due) < Date.now()) return d.done === false ? "overdue" : "past";
+    return "upcoming";
   }
 
-  async function render(panel, force) {
-    const refresh = el("button", { className: "bsf-refresh", type: "button", title: "Refresh", textContent: "↻" });
-    refresh.addEventListener("click", () => render(panel, true));
-    const dark = el("button", { className: "bsf-refresh", type: "button", title: "Toggle dark mode", textContent: "◐" });
+  const STATUS_LABEL = { done: "Submitted", overdue: "Not submitted", past: "Closed", upcoming: "" };
+
+  function deadlineRow(d) {
+    const s = status(d);
+    return el(
+      "li",
+      { className: `bsf-deadline bsf-${s}` },
+      el("span", { className: "bsf-dot" }),
+      el(
+        "div",
+        {},
+        el("a", { href: d.url, textContent: d.name }),
+        el("div", {
+          className: "bsf-muted",
+          textContent: [d.course, `due ${shortDate(d.due)}`, STATUS_LABEL[s]].filter(Boolean).join(" · "),
+        })
+      )
+    );
+  }
+
+  let monthOffset = 0;
+  let selectedDay = null;
+
+  function calendar(deadlines) {
+    const wrap = el("section", { className: "bsf-cal" });
+    const dated = deadlines.filter((d) => d.due);
+    const byDay = new Map();
+    for (const d of dated) {
+      const k = dayKey(d.due);
+      byDay.set(k, [...(byDay.get(k) ?? []), d]);
+    }
+
+    const draw = () => {
+      const today = new Date();
+      const first = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+      const nav = (delta, label) => {
+        const b = el("button", { type: "button", className: "bsf-cal-nav", textContent: label });
+        b.addEventListener("click", () => {
+          monthOffset += delta;
+          selectedDay = null;
+          draw();
+        });
+        return b;
+      };
+
+      const grid = el("div", { className: "bsf-cal-grid" });
+      for (const w of ["M", "T", "W", "T", "F", "S", "S"]) grid.append(el("div", { className: "bsf-cal-wd", textContent: w }));
+      // Monday-first: getDay() is 0 for Sunday.
+      const lead = (first.getDay() + 6) % 7;
+      for (let i = 0; i < lead; i++) grid.append(el("div"));
+      const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      for (let n = 1; n <= days; n++) {
+        const date = new Date(first.getFullYear(), first.getMonth(), n);
+        const k = dayKey(date);
+        const items = byDay.get(k) ?? [];
+        const cell = el(
+          items.length ? "button" : "div",
+          { className: "bsf-cal-day", title: items.map((d) => `${d.course}: ${d.name}`).join("\n") },
+          el("span", { textContent: n }),
+          items.length
+            ? el("span", { className: "bsf-cal-dots" }, ...items.slice(0, 3).map((d) => el("i", { className: `bsf-${status(d)}` })))
+            : null
+        );
+        if (k === dayKey(today)) cell.classList.add("bsf-today");
+        if (k === selectedDay) cell.classList.add("bsf-selected");
+        if (items.length) {
+          cell.type = "button";
+          cell.setAttribute(
+            "aria-label",
+            `${date.toLocaleDateString(undefined, { day: "numeric", month: "long" })}: ${items.length} due`
+          );
+          cell.addEventListener("click", () => {
+            selectedDay = selectedDay === k ? null : k;
+            draw();
+          });
+        }
+        grid.append(cell);
+      }
+
+      // Selected day's items, or everything still open plus the last week's misses.
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const list = selectedDay
+        ? byDay.get(selectedDay) ?? []
+        : dated
+            .filter((d) => (status(d) === "upcoming" || status(d) === "overdue") && Date.parse(d.due) > weekAgo)
+            .sort((a, b) => Date.parse(a.due) - Date.parse(b.due))
+            .slice(0, 6);
+      const heading = selectedDay
+        ? new Date(selectedDay + "T00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })
+        : "Upcoming";
+
+      wrap.replaceChildren(
+        el(
+          "div",
+          { className: "bsf-cal-month" },
+          el(
+            "div",
+            { className: "bsf-cal-head" },
+            nav(-1, "‹"),
+            el("span", { textContent: first.toLocaleDateString(undefined, { month: "long", year: "numeric" }) }),
+            nav(1, "›")
+          ),
+          grid
+        ),
+        el(
+          "div",
+          { className: "bsf-cal-side" },
+          el("h3", { className: "bsf-cal-listhead", textContent: heading }),
+          list.length
+            ? el("ul", { className: "bsf-deadlines" }, ...list.map(deadlineRow))
+            : el("div", { className: "bsf-muted", textContent: "Nothing due." })
+        )
+      );
+    };
+    draw();
+    return wrap;
+  }
+
+  // Native homepage widget chrome, so the boxes match Brightspace's own.
+  function widget(id, title, ...actions) {
+    const heading = el("h2", { className: "d2l-heading vui-heading-4", id: `${id}-title`, textContent: title });
+    const body = el("div", { className: "bsf-widget-body" });
+    const box = el(
+      "div",
+      { className: "d2l-widget d2l-tile bsf-widget", id, role: "region" },
+      el(
+        "div",
+        { className: "d2l-widget-header bsf-widget-header" },
+        el("div", { className: "d2l-homepage-header-wrapper" }, heading),
+        actions.length ? el("div", { className: "bsf-actions" }, ...actions) : null
+      ),
+      body
+    );
+    box.setAttribute("aria-labelledby", heading.id);
+    return { box, body };
+  }
+
+  function mount() {
+    const refresh = el("button", { className: "bsf-icon-btn", type: "button", title: "Refresh", textContent: "↻" });
+    refresh.addEventListener("click", () => render(true));
+    const dark = el("button", { className: "bsf-icon-btn", type: "button", title: "Toggle dark mode", textContent: "◐" });
     dark.addEventListener("click", async () => {
       const { darkMode } = await getSettings();
       ext.storage.local.set({ darkMode: !darkMode });
     });
-    const header = el(
-      "div",
-      { className: "bsf-header" },
-      el("h2", { textContent: "Course progress" }),
-      el("div", {}, dark, refresh)
-    );
-    panel.replaceChildren(header, el("div", { className: "bsf-muted", textContent: "Loading…" }));
+
+    const progress = widget("bsf-progress-widget", "Course Progress", dark, refresh);
+    const deadlines = widget("bsf-deadlines-widget", "Deadlines");
+    // Progress tops the right column (above My Settings); deadlines tops the main column (above My Courses).
+    document.querySelector(".homepage-col-4")?.prepend(progress.box);
+    document.querySelector(".homepage-col-8")?.prepend(deadlines.box);
+    return { progress, deadlines };
+  }
+
+  let widgets = null;
+
+  async function render(force) {
+    const { progress, deadlines } = widgets;
+    const loading = () => el("div", { className: "bsf-muted", textContent: "Loading…" });
+    progress.body.replaceChildren(loading());
+    deadlines.body.replaceChildren(loading());
 
     try {
       const data = await load(force);
       const list = data.courses.length
         ? data.courses.map(courseCard)
         : [el("div", { className: "bsf-muted", textContent: "No current courses found." })];
-      panel.replaceChildren(
-        header,
+      progress.body.replaceChildren(
         ...list,
         el("div", { className: "bsf-footnote", textContent: `Updated ${new Date(data.at).toLocaleTimeString()}` })
       );
+      deadlines.body.replaceChildren(calendar(data.courses.flatMap((c) => c.deadlines ?? [])));
     } catch (err) {
-      panel.replaceChildren(header, el("div", { className: "bsf-error", textContent: `Couldn't load: ${err.message}` }));
+      const msg = () => el("div", { className: "bsf-error", textContent: `Couldn't load: ${err.message}` });
+      progress.body.replaceChildren(msg());
+      deadlines.body.replaceChildren(msg());
     }
   }
 
   const settings = await getSettings();
-  let panel = null;
   const sync = (on) => {
-    if (on && !panel) render((panel = mount()));
-    if (panel) {
-      panel.hidden = !on;
-      document.querySelector(".bsf-tab")?.toggleAttribute("data-off", !on);
+    if (on && !widgets && document.querySelector(".homepage-col-4")) {
+      widgets = mount();
+      render();
+    }
+    if (widgets) {
+      widgets.progress.box.hidden = !on;
+      widgets.deadlines.box.hidden = !on;
     }
   };
   sync(settings.panel);

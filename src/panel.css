@@ -1,75 +1,43 @@
-.bsf-panel {
+/* Widgets reuse Brightspace's .d2l-widget.d2l-tile chrome; these rules only add what's ours. */
+.bsf-widget {
   --bsf-fg: #202122;
   --bsf-muted: #6e7376;
   --bsf-border: #e3e9f1;
   --bsf-accent: #006fbf;
   --bsf-track: #e3e9f1;
+  --bsf-upcoming: #006fbf;
+  --bsf-done: #46a661;
+  --bsf-overdue: #cd2026;
+  --bsf-past: #90989d;
 
-  position: fixed;
-  z-index: 900;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
-  box-sizing: border-box;
-  padding: 16px;
-  background: #fff;
-  border: 1px solid var(--bsf-border);
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   color: var(--bsf-fg);
   font: 14px/1.4 "Lato", system-ui, sans-serif;
 }
-
-/* Drawer mode when the right gutter is too narrow to dock in. */
-.bsf-panel:not(.bsf-docked) {
-  right: 0;
-  width: min(340px, calc(100vw - 32px));
-  transform: translateX(105%);
-  transition: transform 0.2s ease;
-  border-radius: 8px 0 0 8px;
-}
-.bsf-panel:not(.bsf-docked).bsf-open {
-  transform: none;
-}
-
-.bsf-tab {
-  position: fixed;
-  z-index: 901;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%) rotate(180deg);
-  writing-mode: vertical-rl;
-  padding: 12px 6px;
-  border: 1px solid var(--bsf-border, #e3e9f1);
-  border-radius: 0 6px 6px 0;
-  background: #fff;
-  color: #006fbf;
-  font: 600 13px "Lato", system-ui, sans-serif;
-  cursor: pointer;
-}
-.bsf-tab[data-off] {
+.bsf-widget[hidden] {
   display: none;
 }
-
-.bsf-header {
+.bsf-widget-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
 }
-.bsf-header h2 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+.bsf-actions {
+  display: flex;
+  gap: 2px;
 }
-.bsf-refresh {
+.bsf-icon-btn {
   border: none;
   background: none;
   color: var(--bsf-muted);
   font-size: 18px;
+  padding: 2px 6px;
   cursor: pointer;
 }
-.bsf-refresh:hover {
+.bsf-icon-btn:hover {
   color: var(--bsf-accent);
+}
+.bsf-widget-body > .bsf-course:first-child {
+  border-top: none;
 }
 
 .bsf-course {
@@ -145,6 +113,136 @@
   padding-left: 8px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* Deadlines calendar */
+.bsf-cal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+.bsf-cal-month {
+  flex: 1 1 300px;
+}
+/* Hug the list's content so the calendar takes the slack instead of a ragged gap. */
+.bsf-cal-side {
+  flex: 0 1 auto;
+  max-width: 320px;
+}
+.bsf-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.bsf-cal-nav {
+  border: none;
+  background: none;
+  color: var(--bsf-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.bsf-cal-nav:hover {
+  color: var(--bsf-accent);
+}
+.bsf-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.bsf-cal-wd {
+  font-size: 11px;
+  color: var(--bsf-muted);
+  padding-bottom: 2px;
+}
+.bsf-cal-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 38px;
+  padding: 4px 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--bsf-fg);
+  font: inherit;
+  font-size: 12px;
+}
+button.bsf-cal-day {
+  cursor: pointer;
+  font-weight: 700;
+}
+button.bsf-cal-day:hover {
+  border-color: var(--bsf-border);
+}
+.bsf-cal-day.bsf-today > span:first-child {
+  display: inline-block;
+  min-width: 20px;
+  border-radius: 10px;
+  background: var(--bsf-accent);
+  color: #fff;
+}
+.bsf-cal-day.bsf-selected {
+  border-color: var(--bsf-accent);
+}
+.bsf-cal-dots {
+  display: flex;
+  gap: 2px;
+}
+.bsf-cal-dots i,
+.bsf-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bsf-upcoming);
+}
+.bsf-cal-dots i.bsf-done,
+.bsf-done .bsf-dot {
+  background: var(--bsf-done);
+}
+.bsf-cal-dots i.bsf-overdue,
+.bsf-overdue .bsf-dot {
+  background: var(--bsf-overdue);
+}
+.bsf-cal-dots i.bsf-past,
+.bsf-past .bsf-dot {
+  background: var(--bsf-past);
+}
+.bsf-cal-listhead {
+  margin: 4px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.bsf-deadlines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bsf-deadline {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.bsf-deadline .bsf-dot {
+  flex: none;
+  margin-top: 6px;
+}
+.bsf-deadline a {
+  color: var(--bsf-fg);
+  text-decoration: none;
+}
+.bsf-deadline a:hover {
+  color: var(--bsf-accent);
+  text-decoration: underline;
+}
+.bsf-overdue .bsf-muted {
+  color: var(--bsf-overdue);
 }
 
 .bsf-muted,

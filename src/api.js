@@ -45,16 +45,9 @@ const API = {
       items.push(...page.Objects);
       path = page.Next ? new URL(page.Next, location.origin).href.slice(location.origin.length) : null;
     }
+    // DueDate is never populated here on xSITE; deadlines come from dropbox/quizzes instead.
     const counted = items.filter((i) => !i.IsExempt);
-    const now = Date.now();
-    const upcoming = counted
-      .filter((i) => !i.DateCompleted && i.DueDate && Date.parse(i.DueDate) > now)
-      .sort((a, b) => Date.parse(a.DueDate) - Date.parse(b.DueDate));
-    return {
-      done: counted.filter((i) => i.DateCompleted).length,
-      total: counted.length,
-      nextDue: upcoming[0] ? { name: upcoming[0].ItemName, due: upcoming[0].DueDate, url: upcoming[0].ItemUrl } : null,
-    };
+    return { done: counted.filter((i) => i.DateCompleted).length, total: counted.length };
   },
 
   async grades(ou) {
@@ -76,7 +69,26 @@ const API = {
       folders.map((f) => API.get(`/d2l/api/le/${API.le}/${ou}/dropbox/folders/${f.Id}/submissions/mysubmissions/`))
     );
     // mysubmissions returns one entity per user/group; Submissions is non-empty once anything is handed in.
-    const submitted = statuses.filter((s) => s?.some((e) => e.Submissions?.length)).length;
-    return { submitted, total: folders.length };
+    return folders.map((f, i) => ({
+      kind: "Dropbox",
+      name: f.Name,
+      due: f.DueDate ?? f.Availability?.EndDate ?? null,
+      done: !!statuses[i]?.some((e) => e.Submissions?.length),
+      url: `/d2l/lms/dropbox/user/folder_submit_files.d2l?db=${f.Id}&ou=${ou}`,
+    }));
+  },
+
+  async quizzes(ou) {
+    const page = await API.get(`/d2l/api/le/${API.le}/${ou}/quizzes/`);
+    // Undated quizzes (common for formative ones) can't go on a calendar.
+    return (page?.Objects ?? [])
+      .filter((q) => q.IsActive && (q.DueDate || q.EndDate))
+      .map((q) => ({
+        kind: "Quiz",
+        name: q.Name,
+        due: q.DueDate ?? q.EndDate,
+        done: null,
+        url: `/d2l/lms/quizzing/user/quiz_summary.d2l?qi=${q.QuizId}&ou=${ou}`,
+      }));
   },
 };
